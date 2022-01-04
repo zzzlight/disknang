@@ -137,23 +137,24 @@ void IndexGraph::Cut_Link(const Parameters &parameters, SimpleNeighbor *cut_grap
   float m = parameters.Get<float>("M");
   std::vector<std::mutex> locks(nd_);
 
-//#pragma omp parallel
-  //{
-    
-#pragma omp parallel for 
-    for (unsigned n = 0; n < nd_; ++n) {
-      std::vector<Neighbor> pool;
-      //pool.clear();
+#pragma omp parallel
+  {
+    std::vector<Neighbor> pool;
+#pragma omp for schedule(dynamic, 100)
+    for (unsigned n = 0; n < nd_; ++n) {  
+      pool.clear();
       sync_prune(n, pool, m, parameters, cut_graph_); //cut edge
       if(n%10000000==0) std::cout<<"sync:"<<n<<std::endl;
     }
+  }  
     std::cout<<"sync finish"<<std::endl;
-#pragma omp parallel for 
+
+#pragma omp for schedule(dynamic, 100)
     for (unsigned n = 0; n < nd_; ++n) {
       InterInsert(n, range, m, locks, cut_graph_); //reverse connection
       if(n%10000000==0) std::cout<<"inter n:"<<n<<std::endl;
     }
-  //}
+  
 }
 
 void IndexGraph::get_neighbors(const float *query, const Parameters &parameter,
@@ -704,10 +705,11 @@ void IndexGraph::Save(const char *filename) {
   std::ofstream out(filename, std::ios::binary | std::ios::out);
   assert(final_graph_.size() == nd_);
   out.write((char *)&width, sizeof(unsigned));
-  unsigned n_ep=eps_.size();
-  out.write((char *)&n_ep, sizeof(unsigned));
-  out.write((char *)eps_.data(), n_ep*sizeof(unsigned));
-  std::cout<<"width:"<<width<<" n_ep:"<<n_ep<<std::endl;
+  ////modified
+  //unsigned n_ep=eps_.size();
+  //out.write((char *)&n_ep, sizeof(unsigned));//这里需要注意 不使用dfs_expend时候为0
+ // out.write((char *)eps_.data(), n_ep*sizeof(unsigned));
+  std::cout<<"width:"<<width<<std::endl;
   std::cout<<"nd_:"<<nd_<<std::endl;
   for (unsigned i = 0; i < nd_; i++) {
     unsigned GK = (unsigned)final_graph_[i].size();
@@ -724,9 +726,9 @@ void IndexGraph::Load(const char *filename) {
   in.seekg(0,std::ios::beg);
   in.read((char *)&width, 4);
   unsigned n_ep=0;
-  in.read((char *)&n_ep, 4);
+  //in.read((char *)&n_ep, 4);
   eps_.resize(n_ep);
-  in.read((char *)eps_.data(), n_ep*4);
+  //in.read((char *)eps_.data(), n_ep*4);
   std::cout<<"width:"<<width<<" n_ep:"<<n_ep<<std::endl;
   // width=100;
   unsigned cc = 0;

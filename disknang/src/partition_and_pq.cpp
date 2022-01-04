@@ -631,14 +631,10 @@ int shard_data_into_clusters(const std::string data_file, float *pivots,
   cached_ifstream base_reader(data_file, read_blk_size);
   _u32            npts32;
   _u32            basedim32;
-  //modify
+  //
   base_reader.read((char *) &npts32, sizeof(uint32_t));
-  //npts32=100000000;
   base_reader.read((char *) &basedim32, sizeof(uint32_t));
   std::cout<<"base_reader in shard_data function"<<npts32<<" dim:"<<basedim32<<std::endl;
-  //////////////////
-  
-  //basedim32=128;
   //////////////////
   size_t num_points = npts32;
   if (basedim32 != dim) {

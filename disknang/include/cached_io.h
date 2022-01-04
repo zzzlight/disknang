@@ -140,6 +140,7 @@ class cached_ofstream {
       memset(cache_buf, 0, cache_size);
       cur_off = 0;
     }
+    
   }
 
   void flush_cache() {

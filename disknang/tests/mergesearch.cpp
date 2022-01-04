@@ -23,6 +23,25 @@ void load_data(char* filename, int*& data, int& num,int& dim){// load data with 
   in.close();
 }
 
+void new_load_data(char* filename, int*& data, int& num,int& dim){// load data with sift10K pattern
+  ifstream in(filename, ios::binary);
+  if(!in.is_open()){cout<<"open file error"<<endl;return;}
+  in.read((char*)&num,4);
+  in.read((char*)&dim,4);
+  //in.seekg(0,ios::end);
+  //ios::pos_type ss = in.tellg();
+  //int fsize = (int)ss;
+  //num = fsize / (dim+1) / 4;
+  data = new int[num*dim];
+  cout<<"num:"<<num<<" "<<"dim:"<<dim<<endl;
+  in.seekg(0,ios::beg);
+  for(int i = 0; i < num; i++){
+   // in.seekg(4,ios::cur);
+    in.read((char*)(data+i*dim),dim*4);
+  }
+  in.close();
+}
+
 int main(int argc, char** argv){
 
  int *gt = NULL;
@@ -33,7 +52,7 @@ int main(int argc, char** argv){
   int p1,p2,p3,p4;
   int dim1,dim2,dim3,dim4;
   //std::cout<<argv[6]<<" "<<argv[7]<<std::endl;
-  load_data(argv[1], gt,  p1,dim1); //groundtruth 
+  new_load_data(argv[1], gt,  p1,dim1); //groundtruth 
   load_data(argv[3], gt1, p2,dim2);  //result
   load_data(argv[4], gt2, p3,dim3);  //result
   load_data(argv[5], gt3, p4,dim4);  //result
@@ -60,7 +79,7 @@ int main(int argc, char** argv){
   /*
   merge
   */
-    int GK=500;
+    int GK=800;
     vector<vector<int>> gt_;
     for(int i=0;i<10000;i++)
     {
