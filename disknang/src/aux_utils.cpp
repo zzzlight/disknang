@@ -403,9 +403,8 @@ namespace diskann {
                                 std::string centroids_file,std::string disk_index_path) {
     size_t base_num, base_dim;
     diskann::get_bin_metadata(base_file, base_num, base_dim);
-  
-    // double full_index_ram =
-    //     ESTIMATE_RAM_USAGE(base_num, base_dim, sizeof(T), R);
+      std::cout<<"now get num is :"<<base_num<<" "<<"dim is :"<<base_dim<<std::endl;
+    // double full_index_ram =ESTIMATE_RAM_USAGE(base_num, base_dim, sizeof(T), R);
        /*
     if (full_index_ram < ram_budget * 1024 * 1024 * 1024) {
 
@@ -457,7 +456,7 @@ namespace diskann {
       paras.Set<float>("B", 0.4);
       paras.Set<float>("M", 1.0);
       
-      paras.Set<unsigned>("thread",16);
+      paras.Set<unsigned>("thread",40);
       std::cout<<std::endl;
       std::cout << "M: " << "1.0" << "\n";
       
@@ -478,14 +477,16 @@ namespace diskann {
     //也就是这里对base_file全面分治 
     // int         num_parts = my_partition_with_ram_budge<T>(base_file, sampling_rate, ram_budget,
     //                                  2 * R / 3, merged_index_prefix, 2);
-        int         num_parts=partition_with_ram_budget<T>(base_file, sampling_rate, ram_budget,
-                                         2 * R / 3, merged_index_prefix, 2);
+      //  int         num_parts=partition_with_ram_budget<T>(base_file, sampling_rate, ram_budget,
+      //                                   2 * R / 3, merged_index_prefix, 2);
+        int num_parts=my_partition_with_ram_budget<T>(base_file,merged_index_prefix,ram_budget);
+	//int num_parts=40;
 
     // std::string cur_centroid_filepath = merged_index_prefix + "_centroids.bin";
     // std::rename(cur_centroid_filepath.c_str(), centroids_file.c_str());
     
 //     //这里num_parts次建图
-    
+      
      for (int p = 0; p < num_parts; p++) {
       std::string shard_base_file =
           merged_index_prefix + "_subshard-" + std::to_string(p) + ".bin";
@@ -508,7 +509,7 @@ namespace diskann {
       _pvamanaIndex->save(shard_index_file.c_str());
     */
       std::cout<<" data_file save_graph K L iter S R RANGE PL B M muti index"<<std::endl;
-      
+      std::cout<<"now is part"<<p+1<<"name is "<<shard_base_file<<std::endl;
       float* data_load = NULL;
       unsigned points_num, dim;
       efanna2e::new_load_data(shard_base_file.c_str(), data_load, points_num, dim);
@@ -519,14 +520,14 @@ namespace diskann {
       efanna2e::Parameters paras;
       paras.Set<unsigned>("K", 100);
       paras.Set<unsigned>("L", 100);
-      paras.Set<unsigned>("iter",14);
+      paras.Set<unsigned>("iter",8);
       paras.Set<unsigned>("S", 10);
       paras.Set<unsigned>("R", 100);
       paras.Set<unsigned>("RANGE", 100);
       paras.Set<unsigned>("PL", 60);
       paras.Set<float>("B", 0.4);
       paras.Set<float>("M", 1.0);
-      paras.Set<unsigned>("thread", 48);
+      paras.Set<unsigned>("thread", 40);
       std::cout << "M: " << "1.0" << "\n";
        
       auto s = std::chrono::high_resolution_clock::now();
@@ -542,9 +543,9 @@ namespace diskann {
     
   ///***********/////////////////
   //test_set4_mem.index_tempFiles_subshard-1.bin
-   diskann::merge_shards("final", disk_index_path,
-                          merged_index_prefix + "_subshard-", "_ids_uint32.bin",
-                          num_parts, R, mem_index_path, medoids_file);
+   //diskann::merge_shards("final", disk_index_path,
+                          // merged_index_prefix + "_subshard-", "_ids_uint32.bin",
+                          // num_parts, R, mem_index_path, medoids_file);
 ///***********/////////////////
     //delete tempFiles
      for (int p = 0; p < num_parts; p++) {
@@ -554,11 +555,12 @@ namespace diskann {
                                    std::to_string(p) + "_ids_uint32.bin";
        std::string shard_index_file =
            merged_index_prefix + "_subshard-" + std::to_string(p) + "_mem.index";
-        std::remove(shard_base_file.c_str());
-       std::remove(shard_id_file.c_str());
-       std::remove(shard_index_file.c_str());
+      //  std::remove(shard_base_file.c_str());
+    //   std::remove(shard_id_file.c_str());
+      // std::remove(shard_index_file.c_str());
      }
-    return 0;
+     return 0;
+    
   }
 
   // General purpose support for DiskANN interface
@@ -626,25 +628,25 @@ namespace diskann {
   void create_disk_layout(const std::string base_file,
                           const std::string mem_index_file,
                           const std::string output_file,unsigned R,double ram_budget) {
-     //size_t base_num, base_dim;
-    // diskann::get_bin_metadata(base_file, base_num, base_dim);
+     size_t base_num, base_dim;
+    diskann::get_bin_metadata(base_file, base_num, base_dim);
   
-    //  double full_index_ram =
-    //     ESTIMATE_RAM_USAGE(base_num, base_dim, sizeof(T), R);
+     double full_index_ram =
+        ESTIMATE_RAM_USAGE(base_num, base_dim, sizeof(T), R);
         
-    // if (full_index_ram < ram_budget * 1024 * 1024 * 1024) {
-    //     if(rename(mem_index_file.c_str(),output_file.c_str())==0){
-    //       std::cout<<"rename success!"<<std::endl;
-    //     }
-    //     else std::cout<<"rename failed!"<<std::endl;
-    //     return ;
-    // }
-    // else 
-    // {
+    if (full_index_ram < ram_budget * 1024 * 1024 * 1024) {
+        if(rename(mem_index_file.c_str(),output_file.c_str())==0){
+          std::cout<<"rename success!"<<std::endl;
+        }
+        else std::cout<<"rename failed!"<<std::endl;
+        return ;
+    }
+    else 
+    {
 
-    //     std::cout<<"skip!!!!!!!!"<<std::endl;
-    //    return;
-    // }
+        std::cout<<"skip!!!!!!!!"<<std::endl;
+       return;
+    }
 
 
     unsigned npts, ndims;
@@ -836,60 +838,59 @@ namespace diskann {
     diskann::get_bin_metadata(dataFilePath, points_num, dim);
     
     std::cout<<points_num<<"  "<<dim<<std::endl;
-    size_t num_pq_chunks =
-        (size_t)(std::floor)(_u64(final_index_ram_limit / points_num));
+    // size_t num_pq_chunks =
+    //     (size_t)(std::floor)(_u64(final_index_ram_limit / points_num));
      
 
     
-    num_pq_chunks = num_pq_chunks <= 0 ? 1 : num_pq_chunks;
-    num_pq_chunks = num_pq_chunks > dim ? dim : num_pq_chunks;
-    num_pq_chunks =
-        num_pq_chunks > MAX_PQ_CHUNKS ? MAX_PQ_CHUNKS : num_pq_chunks;
+    // num_pq_chunks = num_pq_chunks <= 0 ? 1 : num_pq_chunks;
+    // num_pq_chunks = num_pq_chunks > dim ? dim : num_pq_chunks;
+    // num_pq_chunks =
+    //     num_pq_chunks > MAX_PQ_CHUNKS ? MAX_PQ_CHUNKS : num_pq_chunks;
 
-    diskann::cout << "Compressing " << dim << "-dimensional data into "
-                  << num_pq_chunks << " bytes per vector." << std::endl;
-    //这里是pq的最大码本字节长 
-    size_t train_size, train_dim;
-    float *train_data;
+    // diskann::cout << "Compressing " << dim << "-dimensional data into "
+    //               << num_pq_chunks << " bytes per vector." << std::endl;
+    // //这里是pq的最大码本字节长 
+    // size_t train_size, train_dim;
+    // float *train_data;
 
      double p_val = ((double) TRAINING_SET_SIZE / (double) points_num);
     // generates random sample and sets it to train_data and updates
     // train_size
      std::cout<<"TRAINING_SET_SIZE"<<TRAINING_SET_SIZE<<std::endl;
-   gen_random_slice<T>(dataFilePath, p_val, train_data, train_size,
-   train_dim);
-  //   //抽取随机样本并将其设置为train_data并更新train_size  这里是pq的一部分内容
-  diskann::cout << "Training data loaded of size " << train_size <<
-   std::endl;
+  //  gen_random_slice<T>(dataFilePath, p_val, train_data, train_size,
+  //  train_dim);
+  // //   //抽取随机样本并将其设置为train_data并更新train_size  这里是pq的一部分内容
+  // diskann::cout << "Training data loaded of size " << train_size <<
+  //  std::endl;
 
-    generate_pq_pivots(train_data, train_size, (uint32_t) dim, 256,
-                       (uint32_t) num_pq_chunks, 15, pq_pivots_path);
-                       //这里是pq后半部分 得到pq_pivots
-    // ///****没问题了 *******/////////////////
-    generate_pq_data_from_pivots<T>(dataFilePath, 256, (uint32_t)
-    num_pq_chunks,pq_pivots_path,pq_compressed_vectors_path);
+  //   generate_pq_pivots(train_data, train_size, (uint32_t) dim, 256,
+  //                      (uint32_t) num_pq_chunks, 15, pq_pivots_path);
+  //                      //这里是pq后半部分 得到pq_pivots
+  //   // ///****没问题了 *******/////////////////
+  //   generate_pq_data_from_pivots<T>(dataFilePath, 256, (uint32_t)
+  //   num_pq_chunks,pq_pivots_path,pq_compressed_vectors_path);
     
-   /////////////////////////////////////////
-   delete[] train_data;
+  //  /////////////////////////////////////////
+  //  delete[] train_data;
 
-   train_data = nullptr;
+  //  train_data = nullptr;
 
     diskann::build_merged_vamana_index<T>(
         dataFilePath, _compareMetric, L, R, p_val, indexing_ram_budget,
         mem_index_path, medoids_path, centroids_path,disk_index_path);
   
 ///***********/////////////////
-    diskann::create_disk_layout<T>(dataFilePath, mem_index_path,
-                                    disk_index_path,R,indexing_ram_budget);
+ //   diskann::create_disk_layout<T>(dataFilePath, mem_index_path,
+                               //     disk_index_path,R,indexing_ram_budget);
                                    
-///****还有问题的几个部分*******/////////////////
 
 //再做一个 150000 / n 的全局均匀采样，存盘，搜索时用来 warmup
     double sample_sampling_rate = (150000.0 / points_num);
     gen_random_slice<T>(dataFilePath, sample_base_prefix,
     sample_sampling_rate);
 ////////////////////////////////////
-    std::remove(mem_index_path.c_str());
+    //std::remove(mem_index_path.c_str());
 
     auto e =std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> diff = e - s;

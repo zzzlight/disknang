@@ -47,11 +47,11 @@ void save_result(char* filename, std::vector<std::vector<unsigned> >& results) {
 }
 
 int main(int argc, char** argv) {
-  if (argc != 9) {
-    std::cout << "./run data_file query_file dng_path L K result_path ground_path topK"
-              << std::endl;
-    exit(-1);
-  }
+  // if (argc != 9) {
+  //   std::cout << "./run data_file query_file dng_path L K result_path ground_path topK"
+  //             << std::endl;
+  //   exit(-1);
+  // }
 
     srand(unsigned(time(0)));
     std::cerr << "Using time Seed " << std::endl;
@@ -115,6 +115,7 @@ int main(int argc, char** argv) {
   std::cout << "DistCount: " << index.GetDistCount() << std::endl;
   save_result(argv[6], res);
   ///////////////////////////////////////////////////
+  
   int *gt = NULL;
   int *gt_ = NULL;
 

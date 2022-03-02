@@ -49,6 +49,12 @@ int partition_with_ram_budget(const std::string data_file,
                               size_t            graph_degree,
                               const std::string prefix_path, size_t k_base);
 
+template<typename T>
+int my_partition_with_ram_budget(const std::string data_file,
+                             const std::string prefix_path,double ram_budget);
+
+    
+
 DISKANN_DLLEXPORT int generate_pq_pivots(const float *train_data,
                                          size_t num_train, unsigned dim,
                                          unsigned    num_centers,

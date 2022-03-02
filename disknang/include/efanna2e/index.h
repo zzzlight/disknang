@@ -49,7 +49,7 @@ class Index {
   size_t nd_;
   bool has_built;
   Distance* distance_;
-  char *opt_graph_;
+  char *opt_graph_=NULL;
   size_t node_size;
   size_t data_len;
   size_t neighbor_len;

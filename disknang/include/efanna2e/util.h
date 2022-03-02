@@ -84,7 +84,7 @@ namespace efanna2e {
           unsigned char trans=0;
           in.read((char*)&trans,sizeof(unsigned char));
           data[i*dim+j]=(float)trans;
-          if(i==0) std::cout<<data[i*dim+j]<<" ";
+         // if(i==0) std::cout<<data[i*dim+j]<<" ";
         }
         //in.read((char*)(temp_data+i*dim),dim);
       }

@@ -780,6 +780,86 @@ int partition(const std::string data_file, const float sampling_rate,
 }
 
 template<typename T>
+int my_partition_with_ram_budget(const std::string data_file,
+                             std::string prefix_path,double ram_budget)
+{
+  
+  //_u64 read_blk_size = 64 * 1024 * 1024;
+  // create cached reader + writer
+  std::ifstream base_reader(data_file);
+  _u32            npts32;
+  _u32            basedim32;
+  //
+  base_reader.seekg(0, std::ios::beg);
+  base_reader.read((char *) &npts32, sizeof(uint32_t));
+  base_reader.read((char *) &basedim32, sizeof(uint32_t));
+  std::cout<<"base_reader in shard_data function"<<npts32<<" dim:"<<basedim32<<std::endl;
+  //////////////////
+  size_t num_points = npts32;
+
+    diskann::cout << "in partition function  the dim is :"<<basedim32<< std::endl;
+  
+
+  _u64 single_part=25000000;
+  
+   
+  while(ESTIMATE_RAM_USAGE(single_part, basedim32, sizeof(T), 100)>ram_budget*1024*1024*1024)
+  {
+    std::cout<<"default size is big than limit ,so calculate new size"<<std::endl;
+    std::cout<<"now single_part is "<<single_part<<std::endl;
+    if(single_part>2000000) single_part-=2000000;
+
+  }
+ std::cout<<"divided into "<<single_part<<"estimate size is "<<single_part*basedim32*12<<" ram budget is :"<<ram_budget*1024*1024*1024<<std::endl;
+ //std::cout<<"another show,estimate size is:"<<single_part/1024/1024*basedim32*sizeof(T)*12/1024<<"G"<<std::endl;
+  size_t num_part=DIV_ROUND_UP(num_points, single_part);
+  size_t now_point=num_points;
+  std::vector<std::ofstream> shard_data_writer(num_part);
+  
+  
+  size_t count=0;
+  std::unique_ptr<T[]> block_data_T = std::make_unique<T[]>(single_part * basedim32);
+  while(1) {
+    std::string data_filename =
+        prefix_path + "_subshard-" + std::to_string(count) + ".bin";
+    shard_data_writer[count] =
+        std::ofstream(data_filename.c_str(), std::ios::binary);
+    size_t block_num=0;
+    if(now_point>single_part) block_num=single_part;
+    else block_num=now_point;
+    
+    diskann::cout << "now block point is" << block_num<<std::endl;
+    shard_data_writer[count].write((char *) &block_num, sizeof(uint32_t));
+    shard_data_writer[count].write((char *) &basedim32, sizeof(uint32_t));
+    
+    base_reader.read((char *) block_data_T.get(),
+                     sizeof(T) * (block_num * basedim32));
+    shard_data_writer[count].write((char *) block_data_T.get(), sizeof(T) * (block_num * basedim32));
+    shard_data_writer[count].close();
+    
+    diskann::cout << "now_point is" << now_point<<std::endl;
+    count++;
+    
+    if(now_point>single_part) now_point-=single_part;
+    else break;
+  }
+  //delete[] read_buf;
+  base_reader.close();
+  
+  
+   
+  
+
+  diskann::cout << "\n Partitioned " << num_points
+                << " with single part is " <<single_part <<" points and divided into " << num_part << " shards "
+                << std::endl;
+  return num_part;
+  
+ 
+}
+
+
+template<typename T>
 int partition_with_ram_budget(const std::string data_file,
                               const double sampling_rate, double ram_budget,
                               size_t            graph_degree,
@@ -907,6 +987,14 @@ template DISKANN_DLLEXPORT int partition_with_ram_budget<uint8_t>(
 template DISKANN_DLLEXPORT int partition_with_ram_budget<float>(
     const std::string data_file, const double sampling_rate, double ram_budget,
     size_t graph_degree, const std::string prefix_path, size_t k_base);
+
+
+template DISKANN_DLLEXPORT int my_partition_with_ram_budget<int8_t>(
+    const std::string data_file,const std::string prefix_path,double ram_budget);
+template DISKANN_DLLEXPORT int my_partition_with_ram_budget<uint8_t>(
+  const std::string data_file,const std::string prefix_path,double ram_budget);
+template DISKANN_DLLEXPORT int my_partition_with_ram_budget<float>(
+    const std::string data_file,const std::string prefix_path,double ram_budget);
 
 template DISKANN_DLLEXPORT int generate_pq_data_from_pivots<int8_t>(
     const std::string data_file, unsigned num_centers, unsigned num_pq_chunks,

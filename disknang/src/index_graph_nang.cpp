@@ -19,7 +19,11 @@ IndexGraph::IndexGraph(const size_t dimension, const size_t n, Metric m, Index *
       initializer_{initializer} {
   assert(dimension == initializer->GetDimension());
 }
-IndexGraph::~IndexGraph() {}
+IndexGraph::~IndexGraph() {
+  if(opt_graph_!=NULL) free(opt_graph_);
+  CompactGraph().swap(final_graph_);
+  std::vector<nhood>().swap(graph_);
+}
 
 void IndexGraph::join() {
 #pragma omp parallel for default(shared) schedule(dynamic, 100)
@@ -140,20 +144,22 @@ void IndexGraph::Cut_Link(const Parameters &parameters, SimpleNeighbor *cut_grap
 #pragma omp parallel
   {
     std::vector<Neighbor> pool;
-#pragma omp for schedule(dynamic, 100)
+    #pragma omp for schedule(dynamic, 100)
     for (unsigned n = 0; n < nd_; ++n) {  
       pool.clear();
       sync_prune(n, pool, m, parameters, cut_graph_); //cut edge
+      std::vector<Neighbor>().swap(pool);
       if(n%10000000==0) std::cout<<"sync:"<<n<<std::endl;
     }
-  }  
-    std::cout<<"sync finish"<<std::endl;
-
-#pragma omp for schedule(dynamic, 100)
+    
+    //std::cout<<"sync finish"<<std::endl;
+    
+    #pragma omp for schedule(dynamic, 100)
     for (unsigned n = 0; n < nd_; ++n) {
       InterInsert(n, range, m, locks, cut_graph_); //reverse connection
       if(n%10000000==0) std::cout<<"inter n:"<<n<<std::endl;
     }
+  }  
   
 }
 
@@ -297,6 +303,7 @@ void IndexGraph::sync_prune(unsigned q, std::vector<Neighbor> &pool, float m,
   if (result.size() < range) {
     des_pool[result.size()].distance = -1;
   }
+  std::vector<Neighbor>().swap(result);
 }
 
 void IndexGraph::InterInsert(unsigned n, unsigned range, float m, 
@@ -624,10 +631,12 @@ void IndexGraph::Build(size_t n, const float *data, const Parameters &parameters
     std::vector<unsigned>().swap(graph_[i].rnn_new);
     std::vector<unsigned>().swap(graph_[i].rnn_new);
   }
-  std::vector<nhood>().swap(graph_);
+  //std::vector<nhood>().swap(graph_);
+  
   //RefineGraph(parameters);
   std::cout<<"miss dfs"<<std::endl; 
-
+  delete []cut_graph_;  //回收  这个是这里的
+  cut_graph_=NULL;
   //DFS_expand(parameters);
   //对比了图版本发现没啥用 还拖慢了整体速度
   
@@ -717,7 +726,7 @@ void IndexGraph::Save(const char *filename) {
     out.write((char *)&GK, sizeof(unsigned));
     out.write((char *)final_graph_[i].data(), GK * sizeof(unsigned));
   }
-
+  std::vector<std::vector<unsigned > > ().swap(final_graph_); //这里还可以改一下提升释放
   out.close();
 }
 
@@ -862,8 +871,130 @@ void IndexGraph::SearchWithOptGraph(const float *query, size_t K,
       ++k;
   }
   for (size_t i = 0; i < K; i++) {
-    indices[i] = retset[i].id;
+    indices[i] = retset[i].id+75000000;  //注意 这里加上了偏移  发生召回率为0也是因为这个问题
   }
+}
+
+void IndexGraph::MySearchWithOptGraph(const float *query, size_t K,
+                                  const Parameters &parameters,
+                                  efanna2e::IndexGraph::pointdata *indices,unsigned offset) {
+  unsigned L = parameters.Get<unsigned>("L_search");
+  DistanceFastL2 *dist_fast = (DistanceFastL2 *)distance_;
+
+  std::vector<Neighbor> retset(L + 1);
+  std::vector<unsigned> init_ids(L);
+  std::mt19937 rng(rand());
+  GenRandom(rng, init_ids.data(), L, (unsigned)nd_);
+  // assert(eps_.size() < L);
+  ///////////////tempily mod
+  // for(unsigned i=0; i<eps_.size() && i < L; i++){
+  //   init_ids[i] = eps_[i];
+  // }
+  boost::dynamic_bitset<> flags{nd_, 0};
+  for (unsigned i = 0; i < init_ids.size(); i++) {
+    unsigned id = init_ids[i];
+    if (id >= nd_) continue;
+    _mm_prefetch(opt_graph_ + node_size * id, _MM_HINT_T0);
+  }
+  //上面用于加速，告诉cpu要用上面那些了
+  L = 0;
+  for (unsigned i = 0; i < init_ids.size(); i++) {
+    unsigned id = init_ids[i];
+    if (id >= nd_) continue;  //随机入口点 随机到的如果不在就continue
+    float *x = (float *)(opt_graph_ + node_size * id);
+    float norm_x = *x;
+    x++;
+    float dist = dist_fast->compare(x, query, norm_x, (unsigned)dimension_);
+    dist_cout++;
+    retset[i] = Neighbor(id, dist, true);
+    flags[id] = true;
+    L++;
+  }
+  std::sort(retset.begin(), retset.begin() + L);
+  int k = 0;
+  while (k < (int)L) {
+    int nk = L;
+
+    if (retset[k].flag) {
+      retset[k].flag = false;
+      unsigned n = retset[k].id;
+
+      _mm_prefetch(opt_graph_ + node_size * n + data_len, _MM_HINT_T0);
+      unsigned *neighbors = (unsigned *)(opt_graph_ + node_size * n + data_len);
+      neighbors++;
+      unsigned MaxM = *neighbors;
+      neighbors++;
+      for (unsigned m = 0; m < MaxM; ++m)
+        _mm_prefetch(opt_graph_ + node_size * neighbors[m], _MM_HINT_T0);
+      for (unsigned m = 0; m < MaxM; ++m) {
+        unsigned id = neighbors[m];
+        if (flags[id]) continue;
+        flags[id] = 1;
+        float *data = (float *)(opt_graph_ + node_size * id);
+        float norm = *data;
+        data++;
+        float dist =
+            dist_fast->compare(query, data, norm, (unsigned)dimension_);
+        dist_cout++;
+        if (dist >= retset[L - 1].distance) continue;
+        Neighbor nn(id, dist, true);
+        int r = InsertIntoPool(retset.data(), L, nn);
+
+        // if(L+1 < retset.size()) ++L;
+        if (r < nk) nk = r;
+      }
+    }
+    if (nk <= k)
+      k = nk;
+    else
+      ++k;
+  }
+  // for (size_t i = 0; i < L; i++) {  //重置候选集中的点为未访问
+  //   retset[i].flag = true;
+  // }
+    //std::cout<<"STEP2 "<<std::endl;
+  k = 0;
+  while (k < (int)L) {
+    int nk = L;
+
+    if (!retset[k].flag) {
+      retset[k].flag = true;
+      unsigned n = retset[k].id;
+
+      _mm_prefetch(opt_graph_ + node_size * n + data_len, _MM_HINT_T0);
+      unsigned *neighbors = (unsigned *)(opt_graph_ + node_size * n + data_len);
+      unsigned MaxM = *neighbors;
+      neighbors += 2;
+      for (unsigned m = 0; m < MaxM; ++m)
+        _mm_prefetch(opt_graph_ + node_size * neighbors[m], _MM_HINT_T0);
+      for (unsigned m = 0; m < MaxM; ++m) {
+        unsigned id = neighbors[m];
+        if (flags[id]) continue;
+        flags[id] = 1;
+        float *data = (float *)(opt_graph_ + node_size * id);
+        float norm = *data;
+        data++;
+        float dist =
+            dist_fast->compare(query, data, norm, (unsigned)dimension_);
+        dist_cout++;
+        if (dist >= retset[L - 1].distance) continue;
+        Neighbor nn(id, dist, false);
+        int r = InsertIntoPool(retset.data(), L, nn);
+
+        // if(L+1 < retset.size()) ++L;
+        if (r < nk) nk = r;
+      }
+    }
+    if (nk <= k)
+      k = nk;
+    else
+      ++k;
+  }
+  for (size_t i = 0; i < K; i++) {
+    indices[i].id = retset[i].id+offset;  //注意 这里加上了偏移  发生召回率为0也是因为这个问题
+    indices[i].distance=retset[i].distance;
+  }
+ 
 }
 
 void IndexGraph::OptimizeGraph(float *data) {  // use after build or load
@@ -893,7 +1024,7 @@ void IndexGraph::OptimizeGraph(float *data) {  // use after build or load
     std::vector<unsigned>().swap(final_graph_[i]);
   }
   
-  free(data);
+  delete data;
   data_ = nullptr;
   CompactGraph().swap(final_graph_);
 }

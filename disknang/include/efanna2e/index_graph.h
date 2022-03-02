@@ -23,6 +23,12 @@ namespace efanna2e {
 
 class IndexGraph : public Index {
  public:
+  struct pointdata
+  {
+    unsigned id;
+    float distance;
+    /* data */
+  };
   explicit IndexGraph(const size_t dimension, const size_t n, Metric m, Index *initializer);
 
 
@@ -34,6 +40,11 @@ class IndexGraph : public Index {
   void SearchWithOptGraph(const float *query, size_t K,
                                   const Parameters &parameters,
                                   unsigned *indices);
+  void MySearchWithOptGraph(const float *query, size_t K,
+                                  const Parameters &parameters,
+                                  efanna2e::IndexGraph::pointdata *indices,unsigned offset);         
+  
+
   size_t GetDistCount(){return dist_cout;}
 
   
@@ -89,6 +100,8 @@ class IndexGraph : public Index {
   void parallel_graph_insert(unsigned id, Neighbor nn, LockGraph& g, size_t K);
 
   unsigned width;
+
+  
   std::vector<unsigned> eps_;
 
 };

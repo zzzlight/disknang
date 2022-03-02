@@ -1,68 +1,249 @@
+//
+// Created by 付聪 on 2017/6/21.
+// Modified by WMZ on 2020/6/16.
+//Modified by zmq on 2021/11.
+//
+
+#include <chrono>
 #include <iostream>
 #include <fstream>
 #include <set>
-#include<vector>
+#include<ctime>
+#include "efanna2e/index_random.h"
+#include "efanna2e/index_graph.h"
+#include "efanna2e/util.h"
 
-using namespace std;
+
 
 void load_data(char* filename, int*& data, int& num,int& dim){// load data with sift10K pattern
-  ifstream in(filename, ios::binary);
-  if(!in.is_open()){cout<<"open file error"<<endl;return;}
+  std::ifstream in(filename, std::ios::binary);
+  if(!in.is_open()){std::cout<<"open file error"<<std::endl;return;}
   in.read((char*)&dim,4);
-  in.seekg(0,ios::end);
-  ios::pos_type ss = in.tellg();
+  in.seekg(0,std::ios::end);
+  std::ios::pos_type ss = in.tellg();
   int fsize = (int)ss;
   num = fsize / (dim+1) / 4;
   data = new int[num*dim];
 
-  in.seekg(0,ios::beg);
+  in.seekg(0,std::ios::beg);
   for(int i = 0; i < num; i++){
-    in.seekg(4,ios::cur);
+    in.seekg(4,std::ios::cur);
     in.read((char*)(data+i*dim),dim*4);
   }
   in.close();
 }
 
-void new_load_data(char* filename, int*& data, int& num,int& dim){// load data with sift10K pattern
-  ifstream in(filename, ios::binary);
-  if(!in.is_open()){cout<<"open file error"<<endl;return;}
-  in.read((char*)&num,4);
-  in.read((char*)&dim,4);
-  //in.seekg(0,ios::end);
-  //ios::pos_type ss = in.tellg();
-  //int fsize = (int)ss;
-  //num = fsize / (dim+1) / 4;
-  data = new int[num*dim];
-  cout<<"num:"<<num<<" "<<"dim:"<<dim<<endl;
-  in.seekg(0,ios::beg);
-  for(int i = 0; i < num; i++){
-   // in.seekg(4,ios::cur);
-    in.read((char*)(data+i*dim),dim*4);
+
+void save_result(char* filename, std::vector<std::vector<unsigned> >& results) {
+  std::ofstream out(filename, std::ios::binary | std::ios::out);
+
+  for (unsigned i = 0; i < results.size(); i++) {
+    unsigned GK = (unsigned)results[i].size();
+    
+    out.write((char*)&GK, sizeof(unsigned));
+    out.write((char*)results[i].data(), GK * sizeof(unsigned));
   }
-  in.close();
+  out.close();
 }
 
-int main(int argc, char** argv){
+bool cmp(efanna2e::IndexGraph::pointdata a,efanna2e::IndexGraph::pointdata b)
+{
+   return a.distance<b.distance;
+}
 
- int *gt = NULL;
- // int *gt_ = NULL;
-  int *gt1 = NULL;
-  int *gt2 = NULL;
-  int *gt3 = NULL;
-  int p1,p2,p3,p4;
-  int dim1,dim2,dim3,dim4;
-  //std::cout<<argv[6]<<" "<<argv[7]<<std::endl;
-  new_load_data(argv[1], gt,  p1,dim1); //groundtruth 
-  load_data(argv[3], gt1, p2,dim2);  //result
-  load_data(argv[4], gt2, p3,dim3);  //result
-  load_data(argv[5], gt3, p4,dim4);  //result
-  // p2=query_num;
-  // dim2=K;
-  cout<<"dim2:"<<dim2<<" "<<"dim3:"<<dim3<<endl;
-  cout<<"p1"<<p1<<endl;
-  //if(p1 != p2+p3+p4){std::cout<< "result file and groundtruth don't match,something wrong may hapeen in loaddata for result or groundtruth" <<std::endl; exit(-1);}
+int main(int argc, char** argv) {
+  // if (argc != 9) {
+  //   std::cout << "./run data_file query_file dng_path L K result_path ground_path topK"
+  //             << std::endl;
+  //   exit(-1);
+  // }
+
+    srand(unsigned(time(0)));
+    std::cerr << "Using time Seed " << std::endl;
   
-  int kNN = atoi(argv[2]);
+
+  
+ 
+  std::cerr << "Query Path: " << argv[2] << std::endl;
+
+  unsigned query_num, query_dim;
+  float* query_load = nullptr;
+  efanna2e::load_data(argv[2], query_load, query_num, query_dim);
+  //query_load = efanna2e::data_align(query_load, query_num, query_dim);
+
+  //assert(dim == query_dim);
+
+  std::cerr << "Data Path: " << argv[1] << std::endl;
+
+  unsigned points_num, dim;
+  float* data_load = nullptr;
+  efanna2e::new_load_data(argv[1], data_load, points_num, dim);
+  //data_load = efanna2e::data_align(data_load, points_num, dim);
+
+  efanna2e::IndexRandom init_index(dim, points_num);
+  efanna2e::IndexGraph index(dim, points_num, efanna2e::FAST_L2,
+                           (efanna2e::Index*)(&init_index));
+
+  index.Load(argv[3]);
+  index.OptimizeGraph(data_load);
+
+  unsigned L = (unsigned)atoi(argv[4]);
+  unsigned K = (unsigned)atoi(argv[5]);
+
+  std::cerr << "L = " << L << ", ";
+  std::cerr << "K = " << K << std::endl;
+
+  efanna2e::Parameters paras;
+  paras.Set<unsigned>("L_search", L);
+
+    std::cerr << "DNG Path: " << argv[3] << std::endl;
+    std::cerr << "Result Path: " << argv[6] << std::endl;
+
+  std::vector<std::vector<efanna2e::IndexGraph::pointdata> > res(query_num);
+  for (unsigned i = 0; i < query_num; i++) res[i].resize(K);
+
+  std::vector<std::vector<unsigned> > new_res(query_num);
+  for(unsigned i=0;i<query_num;i++) new_res[i].resize(K);
+  // Warm up
+  // for (int loop = 0; loop < 3; ++loop) {
+  //   for (unsigned i = 0; i < 10; ++i) {
+  //     index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),0);
+  //   }
+  // }
+
+
+  std::vector<std::vector<efanna2e::IndexGraph::pointdata> > total_record(query_num);
+  auto s = std::chrono::high_resolution_clock::now();
+  
+    unsigned offset=0;
+    for (unsigned i = 0; i < query_num; i++) {
+    index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),offset);
+    }
+    
+    for(unsigned x=0;x<query_num;x++)
+    {
+      for(unsigned y=0;y<K;y++)
+      {
+        total_record[x].push_back(res[x][y]);
+      }
+      
+    }
+  
+
+  offset+=25000000;
+  float* data_load2 = nullptr;
+  efanna2e::new_load_data(argv[9], data_load2, points_num, dim);
+  index.Load(argv[10]);
+  index.OptimizeGraph(data_load2);
+
+  for(unsigned i=0;i<query_num;i++) res[i].clear();
+  for (unsigned i = 0; i < query_num; i++) {
+    index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),offset);
+  }
+
+  for(unsigned x=0;x<query_num;x++)
+    {
+      for(unsigned y=0;y<K;y++)
+      {
+        total_record[x].push_back(res[x][y]);
+      }
+      
+    }
+
+  
+  offset+=25000000;
+  float* data_load1 = nullptr;
+  efanna2e::new_load_data(argv[11], data_load1, points_num, dim);
+  index.Load(argv[12]);
+  index.OptimizeGraph(data_load1);
+
+  for(unsigned i=0;i<query_num;i++) res[i].clear();
+  for (unsigned i = 0; i < query_num; i++) {
+    index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),offset);
+  }
+
+  for(unsigned x=0;x<query_num;x++)
+    {
+      for(unsigned y=0;y<K;y++)
+      {
+        total_record[x].push_back(res[x][y]);
+      }
+      
+    }
+    
+   offset+=25000000;
+  float* data_load3 = nullptr;
+  efanna2e::new_load_data(argv[13], data_load3, points_num, dim);
+  index.Load(argv[14]);
+  index.OptimizeGraph(data_load3);
+
+  for(unsigned i=0;i<query_num;i++) res[i].clear();
+  for (unsigned i = 0; i < query_num; i++) {
+    index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),offset);
+  }
+
+  for(unsigned x=0;x<query_num;x++)
+    {
+      for(unsigned y=0;y<K;y++)
+      {
+        total_record[x].push_back(res[x][y]);
+      }
+      
+    }
+
+
+
+    for(unsigned x=0;x<query_num;x++)
+    {
+      std::sort(total_record[x].begin(),total_record[x].end(),cmp);
+      if(x==0) 
+      {
+        std::cout<<"record is:"<<std::endl;
+        for(unsigned t=0;t<total_record[0].size();t++)
+        {
+          std::cout<<total_record[0][t].id<<" ";
+        }
+      }
+    }
+
+
+
+  //}
+
+  for(unsigned i=0;i<query_num;i++)
+  {
+     new_res[i].clear();
+    for(unsigned j=0;j<K;j++)
+    {
+      new_res[i].push_back(total_record[i][j].id);
+    }
+  }
+  
+  auto e = std::chrono::high_resolution_clock::now();
+
+  std::chrono::duration<double> diff = e - s;
+  std::cerr << "Search Time: " << diff.count() << std::endl;
+
+  std::cout << L << "\t" << diff.count() << "\t" << "\n";
+  std::cout << "DistCount: " << index.GetDistCount() << std::endl;
+  save_result(argv[6], new_res);
+  ///////////////////////////////////////////////////
+  
+  int *gt = NULL;
+  int *gt_ = NULL;
+
+  int p1,p2;
+  int dim1,dim2;
+  //std::cout<<argv[6]<<" "<<argv[7]<<std::endl;
+  
+  load_data(argv[7], gt,  p1,dim1); //groundtruth 
+  load_data(argv[6], gt_, p2,dim2);  //result
+ 
+ 
+  
+  if(p1 != p2){std::cout<< "result file and groundtruth don't match,something wrong may hapeen in loaddata for result or groundtruth" <<std::endl; exit(-1);}
+  
+  int kNN = atoi(argv[8]);
 
   if(kNN > dim1){std::cout<< "result file not enough for k="<<kNN <<std::endl; exit(-1);}
 
@@ -76,48 +257,22 @@ int main(int argc, char** argv){
       std::cout<< "query " << i <<" result index not unique!"<< std::endl;
 
   }
-  /*
-  merge
-  */
-    int GK=800;
-    vector<vector<int>> gt_;
-    for(int i=0;i<10000;i++)
-    {
-        vector<int> temp;
-        for(int j=0;j<GK;j++)
-        {
-            temp.push_back(gt1[i*GK+j]);
-        }
-        for(int j=0;j<GK;j++)
-        {
-            temp.push_back(gt2[i*GK+j]);
-        }
-        for(int j=0;j<GK;j++)
-        {
-            temp.push_back(gt3[i*GK+j]);
-        }
-        gt_.push_back(temp);
-    }
-
-
+  
   int cnt=0;
   for(int i = 0; i < p1; i++){
     for(int j=0; j< kNN; j++){
       int k=0;
       
-      for(; k<GK*3; k++){
-        if(gt[i*dim1+j]==gt_[i][k])break;
+      for(; k<kNN; k++){
+        if(gt[i*dim1+j]==gt_[i*dim2+k])break;
       }
-      if(k==3*GK)cnt++;
-      
-      //  for(; k<100; k++){
-      //   if(gt[i*dim1+j]==gt_[i*dim2+k])break;
-      // }
-      // if(k<10000)cnt++;
+      if(k==kNN)cnt++;
     }
   }
   std::cout<<cnt<<std::endl;
   std::cout<<(p1*kNN)<<std::endl;
   std::cout<<kNN <<"NN accuracy: "<<1-(float)cnt/(p1*kNN)<<std::endl;
-    return 0;
+    
+  /////////////////////////////////////////////////
+  return 0;
 }
