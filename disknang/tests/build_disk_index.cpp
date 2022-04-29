@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     std::cout << "Usage: " << argv[0]
               << "  [data_type<float/int8/uint8>]  [data_file.bin]  "
                  "[index_prefix_path]  "
-                 "[R]  [L]  [B]  [M]  [T]. See README for more information on "
+                 "[iter]]  [nouse]  [nouse]  [nouse]  [threads]. See README for more information on "
                  "parameters."
               << std::endl;
   } else {

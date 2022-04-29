@@ -58,9 +58,6 @@ namespace efanna2e {
     
     inline void new_load_data(const char* filename, float*& data, unsigned& num,unsigned& dim){// load data with sift10K pattern
       std::ifstream in(filename, std::ios::binary);
-      ////////
-      //dim=128;
-      //////////////
       if(!in.is_open()){std::cout<<"open file error"<<std::endl;exit(-1);}
       in.read((char*)&num,4);
       std::cout<<"data num: "<<num<<std::endl;
@@ -70,14 +67,11 @@ namespace efanna2e {
       // std::ios::pos_type ss = in.tellg();
       // size_t fsize = (size_t)ss;
       // num = (unsigned)(fsize / (dim+1) / 4);
-     
     // size_t allocSize = num * dim * sizeof(T);
-  
     // alloc_aligned(((void**) &data), allocSize, 8 * sizeof(T));
       data = new float[(size_t)num * (size_t)dim];
-     // char* temp_data = new char[(size_t)num * (size_t)dim];
-
-     // in.seekg(0,std::ios::beg);
+     // data = new float[(size_t)num * (size_t)dim * sizeof(float)]; //如果刚好单片在4000w以上卡住说明这里有问题 则选用此种
+       std::cout<<"align data length is "<<(size_t)num * (size_t)dim<<std::endl;
       for(size_t i = 0; i < num; i++){
         for(size_t j=0;j<dim;j++)
         {
@@ -86,7 +80,6 @@ namespace efanna2e {
           data[i*dim+j]=(float)trans;
          // if(i==0) std::cout<<data[i*dim+j]<<" ";
         }
-        //in.read((char*)(temp_data+i*dim),dim);
       }
       in.close();
     }

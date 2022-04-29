@@ -70,12 +70,6 @@ int main(int argc, char** argv) {
   //assert(dim == query_dim);
 
   std::cerr << "query data Path: " << argv[1] << std::endl;
-
- 
-  // efanna2e::IndexRandom init_index(dim, points_num);
-  // efanna2e::IndexGraph index(dim, points_num, efanna2e::FAST_L2,
-  //                          (efanna2e::Index*)(&init_index));
-
   unsigned L = (unsigned)atoi(argv[2]);
   unsigned K = (unsigned)atoi(argv[3]);
 
@@ -100,62 +94,57 @@ int main(int argc, char** argv) {
   // }
 
   std::vector<std::vector<efanna2e::IndexGraph::pointdata> > total_record(query_num);
-  auto s = std::chrono::high_resolution_clock::now();
   
- int parts=0;
- parts=atoi(argv[6]);
- unsigned offset=0;
- unsigned totalCount=0;
+  
+  int parts=0;
+  parts=atoi(argv[6]);
+  unsigned offset=0;
+  unsigned totalCount=0;
 
- 
+  auto s = std::chrono::high_resolution_clock::now();
   for(int i=0;i<parts;i++)
   {
       unsigned points_num, dim;
       std::string index_prefix_path=argv[4];
       std::string temp_data_file=index_prefix_path + "_mem.index"+ "_tempFiles"+ "_subshard-" + std::to_string(i) + ".bin";
       std::string temp_index_file="final"+std::to_string(i)+"_"+index_prefix_path+"_disk.index";
-     // std::cout<<"temp_index_file is:"<<temp_index_file<<std::endl;
       float* data_load2 = nullptr;
       efanna2e::new_load_data(temp_data_file.c_str(), data_load2, points_num, dim);
       efanna2e::IndexRandom init_index(dim, points_num);
-      efanna2e::IndexGraph index(dim, points_num, efanna2e::FAST_L2,
-                            (efanna2e::Index*)(&init_index));
+      efanna2e::IndexGraph index(dim, points_num, efanna2e::FAST_L2,(efanna2e::Index*)(&init_index));
       index.Load(temp_index_file.c_str());
       index.OptimizeGraph(data_load2);
       #pragma omp parallel
       {
-        #pragma omp parallel for
+        #pragma omp for schedule(dynamic, 100)
         for (unsigned i = 0; i < query_num; i++) res[i].resize(K);
-        #pragma omp parallel for
+
+        #pragma omp for schedule(dynamic, 100)
         for(unsigned i=0;i<query_num;i++) res[i].clear();
-      
-          #pragma omp parallel for
-          for (unsigned i = 0; i < query_num; i++) {
+    
+        #pragma omp for schedule(dynamic, 100)
+        for (unsigned i = 0; i < query_num; i++) {
             index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),offset);
-            // if(i==query_num-1) index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),offset,true);
-            // else index.MySearchWithOptGraph(query_load + i * dim, K, paras, res[i].data(),offset,false);
-          }
-      
-      //index.MySearchWithOptGraph(query_load + (query_num-1) * dim, K, paras, res[query_num-1].data(),offset,true);
-        std::cout<<"flag -------------------------------------------------------"<<std::endl;
-        #pragma omp parallel for
-        for(unsigned x=0;x<query_num;x++)
-        {
+        }
+    
+        //std::cout<<"flag -------------------------------------------------------"<<std::endl;
+        #pragma omp for schedule(dynamic, 100)
+        for(unsigned x=0;x<query_num;x++){
             for(unsigned y=0;y<K;y++)
             {
               total_record[x].push_back(res[x][y]);
             }
-            
         }
+        #pragma omp for schedule(dynamic, 100)
+        for(unsigned j=0;j<K;j++) std::vector<efanna2e::IndexGraph::pointdata>().swap(res[j]);
       }
       totalCount+=index.GetDistCount();
-      #pragma omp parallel for
-      for(unsigned j=0;j<K;j++) std::vector<efanna2e::IndexGraph::pointdata>().swap(res[j]);
-        
       offset+=25000000;
     }
   
-  
+    auto e1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> diff1 = e1 - s;
+    std::cerr << "Search Time diff1: " << diff1.count() << std::endl;
     for(unsigned x=0;x<query_num;x++)
     {
       std::sort(total_record[x].begin(),total_record[x].end(),cmp);
@@ -169,7 +158,9 @@ int main(int argc, char** argv) {
       //   }
       // }
     }
-
+  auto e2 = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> diff2 = e2 - s;
+  std::cerr << "Search Time diff2: " << diff2.count() << std::endl;
   for(unsigned i=0;i<query_num;i++)
   {
      new_res[i].clear();
@@ -184,7 +175,6 @@ int main(int argc, char** argv) {
   std::chrono::duration<double> diff = e - s;
   std::cerr << "Search Time: " << diff.count() << std::endl;
 
-  //std::cout << L << "\t" << diff.count() << "\t" << "\n";
   std::cout << "DistCount: " << totalCount << std::endl;
   save_result(argv[7], new_res);
   for(unsigned i=0;i<query_num;i++)
@@ -237,6 +227,5 @@ int main(int argc, char** argv) {
   std::cout<<(p1*kNN)<<std::endl;
   std::cout<<kNN <<"NN accuracy: "<<1-(float)cnt/(p1*kNN)<<std::endl;
     
-  /////////////////////////////////////////////////
   return 0;
 }

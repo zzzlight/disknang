@@ -144,20 +144,20 @@ void IndexGraph::Cut_Link(const Parameters &parameters, SimpleNeighbor *cut_grap
 #pragma omp parallel
   {
     std::vector<Neighbor> pool;
-    #pragma omp for schedule(dynamic, 100)
+#pragma omp for schedule(dynamic, 100)
     for (unsigned n = 0; n < nd_; ++n) {  
       pool.clear();
       sync_prune(n, pool, m, parameters, cut_graph_); //cut edge
-      std::vector<Neighbor>().swap(pool);
-      if(n%10000000==0) std::cout<<"sync:"<<n<<std::endl;
+     // std::vector<Neighbor>().swap(pool);
+     // if(n%10000000==0) std::cout<<"sync:"<<n<<std::endl;
     }
     
     //std::cout<<"sync finish"<<std::endl;
     
-    #pragma omp for schedule(dynamic, 100)
+#pragma omp for schedule(dynamic, 100)
     for (unsigned n = 0; n < nd_; ++n) {
       InterInsert(n, range, m, locks, cut_graph_); //reverse connection
-      if(n%10000000==0) std::cout<<"inter n:"<<n<<std::endl;
+     // if(n%10000000==0) std::cout<<"inter n:"<<n<<std::endl;
     }
   }  
   
@@ -507,12 +507,13 @@ void IndexGraph::InitializeGraph(const Parameters &parameters) {
   for (unsigned i = 0; i < nd_; i++) {
     graph_.push_back(nhood(L, S, rng, (unsigned) nd_));
   }
+  //随机构建KNN
 #pragma omp parallel for
   for (unsigned i = 0; i < nd_; i++) {
     const float *query = data_ + i * dimension_;
     std::vector<unsigned> tmp(S + 1);
     initializer_->Search(query, data_, S + 1, parameters, tmp.data());
-
+    //第一轮初始化 查找目前点周围的邻居
     for (unsigned j = 0; j < S; j++) {
       unsigned id = tmp[j];
       if (id == i)continue;
@@ -588,22 +589,20 @@ void IndexGraph::InitializeGraph_Refine(const Parameters &parameters) {
 
 
 void IndexGraph::Build(size_t n, const float *data, const Parameters &parameters) {
-  unsigned NUM_THREADS = parameters.Get<unsigned>("thread");
-  if (NUM_THREADS != 0) omp_set_num_threads(NUM_THREADS);
-  //assert(initializer_->GetDataset() == data);
+  // unsigned NUM_THREADS = parameters.Get<unsigned>("thread");
+  // omp_set_num_threads(NUM_THREADS);
+  // std::cout<<"The threads are : "<<NUM_THREADS<<std::endl;
   data_ = data;
   assert(initializer_->HasBuilt());
   unsigned range = parameters.Get<unsigned>("RANGE");
-  if (NUM_THREADS != 0) omp_set_num_threads(NUM_THREADS);
   InitializeGraph(parameters);
-  if (NUM_THREADS != 0) omp_set_num_threads(NUM_THREADS);
   auto start1=std::chrono::high_resolution_clock::now();
   NNDescent(parameters);
   auto end1=std::chrono::high_resolution_clock::now();
   std::cout<<"nndescent final"<<std::endl;
   std::chrono::duration<double> diff1 = end1-start1;
   std::cout<<diff1.count()<<"s"<<std::endl;  
-  std::cout<<nd_*(size_t)range<<std::endl;
+  //std::cout<<nd_*(size_t)range<<std::endl;
   SimpleNeighbor *cut_graph_ = new SimpleNeighbor[nd_ * (size_t)range];
   auto start2=std::chrono::high_resolution_clock::now();
   Cut_Link(parameters, cut_graph_);
@@ -634,11 +633,11 @@ void IndexGraph::Build(size_t n, const float *data, const Parameters &parameters
   //std::vector<nhood>().swap(graph_);
   
   //RefineGraph(parameters);
-  std::cout<<"miss dfs"<<std::endl; 
-  delete []cut_graph_;  //回收  这个是这里的
+  std::cout<<"no dfs"<<std::endl; 
+  delete []cut_graph_;  //回收内存
   cut_graph_=NULL;
   //DFS_expand(parameters);
-  //对比了图版本发现没啥用 还拖慢了整体速度
+  //效果不大，拖慢了整体速度
   
 
   unsigned max, min, avg;
@@ -726,7 +725,7 @@ void IndexGraph::Save(const char *filename) {
     out.write((char *)&GK, sizeof(unsigned));
     out.write((char *)final_graph_[i].data(), GK * sizeof(unsigned));
   }
-  std::vector<std::vector<unsigned > > ().swap(final_graph_); //这里还可以改一下提升释放
+  std::vector<std::vector<unsigned > > ().swap(final_graph_);
   out.close();
 }
 

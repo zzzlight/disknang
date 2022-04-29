@@ -800,7 +800,7 @@ int my_partition_with_ram_budget(const std::string data_file,
     diskann::cout << "in partition function  the dim is :"<<basedim32<< std::endl;
   
 
-  _u64 single_part=25000000;
+  _u64 single_part=50000000;
   
    
   while(ESTIMATE_RAM_USAGE(single_part, basedim32, sizeof(T), 100)>ram_budget*1024*1024*1024)

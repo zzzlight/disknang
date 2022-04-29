@@ -15,7 +15,7 @@
 #include "cached_io.h"
 #include "index.h"
 #include "mkl.h"
-#include "omp.h"
+#include <omp.h>
 #include "partition_and_pq.h"
 #include "percentile_stats.h"
 #include "pq_flash_index.h"
@@ -397,10 +397,10 @@ namespace diskann {
   template<typename T>
   int build_merged_vamana_index(std::string     base_file,
                                 diskann::Metric _compareMetric, unsigned L,
-                                unsigned R, double sampling_rate,
+                                unsigned iter, double sampling_rate,
                                 double ram_budget, std::string mem_index_path,
                                 std::string medoids_file,
-                                std::string centroids_file,std::string disk_index_path) {
+                                std::string centroids_file,std::string disk_index_path,unsigned thread_set) {
     size_t base_num, base_dim;
     diskann::get_bin_metadata(base_file, base_num, base_dim);
       std::cout<<"now get num is :"<<base_num<<" "<<"dim is :"<<base_dim<<std::endl;
@@ -486,7 +486,7 @@ namespace diskann {
     // std::rename(cur_centroid_filepath.c_str(), centroids_file.c_str());
     
 //     //这里num_parts次建图
-      
+     
      for (int p = 0; p < num_parts; p++) {
       std::string shard_base_file =
           merged_index_prefix + "_subshard-" + std::to_string(p) + ".bin";
@@ -520,14 +520,14 @@ namespace diskann {
       efanna2e::Parameters paras;
       paras.Set<unsigned>("K", 100);
       paras.Set<unsigned>("L", 100);
-      paras.Set<unsigned>("iter",8);
+      paras.Set<unsigned>("iter",iter);
       paras.Set<unsigned>("S", 10);
       paras.Set<unsigned>("R", 100);
       paras.Set<unsigned>("RANGE", 100);
       paras.Set<unsigned>("PL", 60);
       paras.Set<float>("B", 0.4);
       paras.Set<float>("M", 1.0);
-      paras.Set<unsigned>("thread", 40);
+      paras.Set<unsigned>("thread", thread_set);
       std::cout << "M: " << "1.0" << "\n";
        
       auto s = std::chrono::high_resolution_clock::now();
@@ -535,10 +535,8 @@ namespace diskann {
       auto e = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> diff = e-s;
       std::cout <<"Time cost: "<< diff.count() << "\n";
-      // ///**********/////////////////
       std::string temp_name="final"+std::to_string(p)+"_"+disk_index_path;
       index.Save(temp_name.c_str());
-       ///*********/////////////////
      }
     
   ///***********/////////////////
@@ -559,6 +557,7 @@ namespace diskann {
     //   std::remove(shard_id_file.c_str());
       // std::remove(shard_index_file.c_str());
      }
+     
      return 0;
     
   }
@@ -643,7 +642,6 @@ namespace diskann {
     }
     else 
     {
-
         std::cout<<"skip!!!!!!!!"<<std::endl;
        return;
     }
@@ -784,7 +782,7 @@ namespace diskann {
 
     if (param_list.size() != 5) {
       diskann::cout
-          << "Correct usage of parameters is R (max degree) "
+          << "Correct usage of parameters is iter (max iter times) "
              "L (indexing list size, better if >= R) B (RAM limit of final "
              "index in "
              "GB) M (memory limit while indexing) T (number of threads for "
@@ -803,7 +801,7 @@ namespace diskann {
     std::string centroids_path = disk_index_path + "_centroids.bin";
     std::string sample_base_prefix = index_prefix_path + "_sample";
 
-    unsigned R = (unsigned) atoi(param_list[0].c_str());
+    unsigned iter = (unsigned) atoi(param_list[0].c_str());
     unsigned L = (unsigned) atoi(param_list[1].c_str());
 
     double final_index_ram_limit = get_memory_budget(param_list[2]);
@@ -820,13 +818,12 @@ namespace diskann {
       return false;
     }
     _u32 num_threads = (_u32) atoi(param_list[4].c_str());
+    
+    omp_set_num_threads(num_threads);
+    std::cout<<"The threads are : "<<num_threads<<std::endl;
+    
 
-    if (num_threads != 0) {
-      omp_set_num_threads(num_threads);
-      mkl_set_num_threads(num_threads);
-    }
-
-    diskann::cout << "Starting index build: R=" << R << " L=" << L
+    diskann::cout << "Starting index build: iter=" << iter << " L=" << L
                   << " Query RAM budget: " << final_index_ram_limit
                   << " Indexing ram budget: " << indexing_ram_budget
                   << " T: " << num_threads << std::endl;
@@ -877,8 +874,8 @@ namespace diskann {
   //  train_data = nullptr;
 
     diskann::build_merged_vamana_index<T>(
-        dataFilePath, _compareMetric, L, R, p_val, indexing_ram_budget,
-        mem_index_path, medoids_path, centroids_path,disk_index_path);
+        dataFilePath, _compareMetric, L, iter, p_val, indexing_ram_budget,
+        mem_index_path, medoids_path, centroids_path,disk_index_path,num_threads);
   
 ///***********/////////////////
  //   diskann::create_disk_layout<T>(dataFilePath, mem_index_path,
@@ -960,17 +957,17 @@ namespace diskann {
 
   template DISKANN_DLLEXPORT int build_merged_vamana_index<int8_t>(
       std::string base_file, diskann::Metric _compareMetric, unsigned L,
-      unsigned R, double sampling_rate, double ram_budget,
+      unsigned iter, double sampling_rate, double ram_budget,
       std::string mem_index_path, std::string medoids_path,
-      std::string centroids_file,std::string disk_index_path);
+      std::string centroids_file,std::string disk_index_path,unsigned thread_set);
   template DISKANN_DLLEXPORT int build_merged_vamana_index<float>(
       std::string base_file, diskann::Metric _compareMetric, unsigned L,
-      unsigned R, double sampling_rate, double ram_budget,
+      unsigned iter, double sampling_rate, double ram_budget,
       std::string mem_index_path, std::string medoids_path,
-      std::string centroids_file,std::string disk_index_path);
+      std::string centroids_file,std::string disk_index_path,unsigned thread_set);
   template DISKANN_DLLEXPORT int build_merged_vamana_index<uint8_t>(
       std::string base_file, diskann::Metric _compareMetric, unsigned L,
-      unsigned R, double sampling_rate, double ram_budget,
+      unsigned iter, double sampling_rate, double ram_budget,
       std::string mem_index_path, std::string medoids_path,
-      std::string centroids_file,std::string disk_index_path);
+      std::string centroids_file,std::string disk_index_path,unsigned thread_set);
 };  // namespace diskann
